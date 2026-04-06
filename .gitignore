@@ -1,0 +1,23 @@
+docs/
+storage/logs/
+
+# Ambiente local e segredos
+.env
+.env.*
+!.env.example
+
+# Arquivos de log e temporarios
+*.log
+*.tmp
+*.swp
+
+# Dependencias PHP (se Composer for usado)
+vendor/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# IDE/Editor
+.vscode/
+.idea/

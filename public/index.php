@@ -9,7 +9,6 @@ $erro = '';
 $sucesso = '';
 $resultadoConsulta = [];
 $cpfConsulta = '';
-$acaoRealizada = ''; // Variável extra para saber onde exibir o erro
 
 try {
     $authController = new AuthController();
@@ -24,33 +23,32 @@ if (isset($_SESSION['user_id'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $acao = (string)($_POST['acao'] ?? '');
+
     if ($authController === null || $processoController === null) {
         $erro = 'Não foi possível processar a solicitação sem conexão com o banco.';
-    }
+    } else {
+        if ($acao === 'login') {
+            $email = trim((string)($_POST['email'] ?? ''));
+            $senha = (string)($_POST['senha'] ?? '');
 
-    $acao = $_POST['acao'] ?? '';
-    $acaoRealizada = $acao;
+            if ($authController->login($email, $senha)) {
+                header('Location: dashboard.php');
+                exit;
+            }
 
-    if ($acao === 'login' && $authController !== null) {
-        $email = trim((string)($_POST['email'] ?? ''));
-        $senha = (string)($_POST['senha'] ?? '');
-
-        if ($authController->login($email, $senha)) {
-            header('Location: dashboard.php');
-            exit;
+            $erro = 'Credenciais inválidas.';
         }
 
-        $erro = 'Credenciais inválidas.';
-    }
+        if ($acao === 'consulta_publica') {
+            $cpfConsulta = (string)($_POST['cpf_consulta'] ?? '');
+            $resultadoConsulta = $processoController->consultaPublica($cpfConsulta);
 
-    if ($acao === 'consulta_publica' && $processoController !== null) {
-        $cpfConsulta = (string)($_POST['cpf_consulta'] ?? '');
-        $resultadoConsulta = $processoController->consultaPublica($cpfConsulta);
-
-        if ($resultadoConsulta === []) {
-            $erro = 'Nenhum processo encontrado para o CPF informado.';
-        } else {
-            $sucesso = 'Consulta realizada com sucesso.';
+            if ($resultadoConsulta === []) {
+                $erro = 'Nenhum processo encontrado para o CPF informado.';
+            } else {
+                $sucesso = 'Consulta realizada com sucesso.';
+            }
         }
     }
 }
@@ -110,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- Login Interno -->
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 hover:shadow-md transition-shadow">
                 <div class="mb-6">
-                    <h2 class="text-xl font-semibold text-slate-800">Acesso Restrito</h2>
+                    <h2 class="text-xl font-bold text-slate-800">Acesso Restrito</h2>
                     <p class="text-sm text-slate-500 mt-1">Entre com suas credenciais de servidor.</p>
                 </div>
                 
@@ -150,12 +148,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </svg>
                     </button>
                 </form>
+
+                <!-- Links de Recuperação -->
+                <div class="mt-6 pt-6 border-t border-slate-100">
+                    <p class="text-sm text-slate-500 mb-3 text-center">Problemas com o acesso?</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <a href="recuperar-senha.php" class="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 hover:border-indigo-300 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            Recuperar senha
+                        </a>
+                        <a href="redefinir-senha.php" class="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            Redefinir com token
+                        </a>
+                    </div>
+                </div>
             </section>
 
             <!-- Consulta Pública -->
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 hover:shadow-md transition-shadow">
                 <div class="mb-6">
-                    <h2 class="text-xl font-semibold text-slate-800">Consulta Pública</h2>
+                    <h2 class="text-xl font-bold text-slate-800">Consulta Pública</h2>
                     <p class="text-sm text-slate-500 mt-1">Acompanhe seus protocolos vinculados ao seu CPF.</p>
                 </div>
 

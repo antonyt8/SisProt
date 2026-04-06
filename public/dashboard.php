@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config/bootstrap.php';
@@ -11,16 +12,18 @@ $processoController = null;
 $erro = '';
 $sucesso = '';
 $userId = (int)$_SESSION['user_id'];
+$isAdmin = $userId === 1;
 
 try {
     $authController = new AuthController();
     $processoController = new ProcessoController();
 } catch (Throwable $e) {
-    $erro = 'Banco de dados indisponível no momento. Inicie o MySQL no XAMPP e recarregue a página.';
+    $erro = 'Banco de dados indisponivel no momento. Inicie o MySQL no XAMPP e recarregue a pagina.';
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $acao = $_POST['acao'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $processoController !== null) {
+    $acao = (string)($_POST['acao'] ?? '');
+    $resultado = ['ok' => false, 'mensagem' => 'Acao nao reconhecida.'];
 
     if ($acao === 'logout' && $authController !== null) {
         $authController->logout();
@@ -28,267 +31,353 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($acao === 'cadastrar_processo' && $processoController !== null) {
+    if ($acao === 'cadastrar_processo') {
         $resultado = $processoController->cadastrar($_POST, $userId);
-        if ($resultado['ok']) {
-            $sucesso = $resultado['mensagem'];
-        } else {
-            $erro = $resultado['mensagem'];
-        }
     }
 
-    if ($acao === 'tramitar_processo' && $processoController !== null) {
+    if ($acao === 'tramitar_processo') {
         $resultado = $processoController->tramitar($_POST, $userId);
-        if ($resultado['ok']) {
-            $sucesso = $resultado['mensagem'];
-        } else {
-            $erro = $resultado['mensagem'];
-        }
+    }
+
+    if ($acao === 'excluir_processo') {
+        $resultado = $processoController->excluirLogicamente($_POST, $userId);
+    }
+
+    if ($acao === 'finalizar_processo') {
+        $resultado = $processoController->finalizar($_POST, $userId);
+    }
+
+    if ($acao === 'editar_processo') {
+        $resultado = $processoController->editar($_POST, $userId);
+    }
+
+    if ($isAdmin && $acao === 'criar_usuario') {
+        $resultado = $processoController->criarUsuario($_POST);
+    }
+
+    if ($isAdmin && $acao === 'atualizar_usuario') {
+        $resultado = $processoController->atualizarUsuario($_POST);
+    }
+
+    if ($isAdmin && $acao === 'inativar_usuario') {
+        $resultado = $processoController->inativarUsuario($_POST);
+    }
+
+    if ($isAdmin && $acao === 'criar_setor') {
+        $resultado = $processoController->criarSetor($_POST);
+    }
+
+    if ($isAdmin && $acao === 'atualizar_setor') {
+        $resultado = $processoController->atualizarSetor($_POST);
+    }
+
+    if ($resultado['ok']) {
+        $sucesso = (string)$resultado['mensagem'];
+    } else {
+        $erro = (string)$resultado['mensagem'];
     }
 }
 
+$filtros = [
+    'protocolo' => trim((string)($_GET['protocolo'] ?? '')),
+    'cpf' => trim((string)($_GET['cpf'] ?? '')),
+    'status' => trim((string)($_GET['status'] ?? '')),
+    'setor_id' => (string)($_GET['setor_id'] ?? ''),
+    'data_inicio' => trim((string)($_GET['data_inicio'] ?? '')),
+    'data_fim' => trim((string)($_GET['data_fim'] ?? '')),
+];
+
 $setores = $processoController !== null ? $processoController->listarSetores() : [];
-$processos = $processoController !== null ? $processoController->listarProcessos() : [];
+$setoresGerencial = $processoController !== null ? $processoController->listarSetoresGerencial() : [];
+$processos = $processoController !== null ? $processoController->listarProcessosComFiltros($filtros) : [];
+$usuarios = ($processoController !== null && $isAdmin) ? $processoController->listarUsuarios() : [];
+
+$editarId = (int)($_GET['editar_id'] ?? 0);
+$historicoId = (int)($_GET['historico_id'] ?? 0);
+$processoEdicao = ($processoController !== null && $editarId > 0) ? $processoController->obterProcesso($editarId) : null;
+$historico = ($processoController !== null && $historicoId > 0) ? $processoController->historico($historicoId) : [];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SisProt - Painel Interno</title>
-    <!-- Tailwind CSS -->
+    <title>SisProt - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-    </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
-
-    <!-- Topbar / Navbar -->
-    <nav class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <div class="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-600 text-white">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                    </div>
-                    <span class="font-bold text-xl tracking-tight">SisProt <span class="text-slate-400 text-sm font-normal ml-2 hidden sm:inline">Painel Interno</span></span>
-                </div>
-                <form method="post" class="m-0">
-                    <input type="hidden" name="acao" value="logout">
-                    <button type="submit" class="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus:ring-4 focus:ring-red-600/30 outline-none">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        Sair
-                    </button>
-                </form>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+    <header class="bg-slate-900 text-white">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-xl font-bold">SisProt - Painel Interno</h1>
+                <p class="text-xs text-slate-300">Usuario: <?= htmlspecialchars((string)($_SESSION['user_nome'] ?? 'N/A'), ENT_QUOTES, 'UTF-8') ?><?= $isAdmin ? ' (admin)' : '' ?></p>
             </div>
+            <form method="post">
+                <input type="hidden" name="acao" value="logout">
+                <button class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm font-semibold" type="submit">Sair</button>
+            </form>
         </div>
-    </nav>
+    </header>
 
-    <!-- Main Content -->
-    <main class="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- Alertas de Feedback Globais -->
+    <main class="max-w-7xl mx-auto p-4 space-y-6">
         <?php if ($erro !== ''): ?>
-            <div class="mb-6 p-4 rounded-xl flex items-start gap-3 bg-red-50 text-red-800 border border-red-200 shadow-sm animate-pulse">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p class="font-medium text-sm"><?= htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') ?></p>
-            </div>
+            <div class="bg-red-50 border border-red-200 text-red-700 rounded p-3"><?= htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>
 
         <?php if ($sucesso !== ''): ?>
-            <div class="mb-6 p-4 rounded-xl flex items-start gap-3 bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p class="font-medium text-sm"><?= htmlspecialchars($sucesso, ENT_QUOTES, 'UTF-8') ?></p>
-            </div>
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded p-3"><?= htmlspecialchars($sucesso, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>
 
-        <!-- Formulários Grid (2 colunas) -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            
-            <!-- Card Novo Processo -->
-            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 hover:shadow-md transition-shadow">
-                <div class="mb-6">
-                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Novo Processo
-                    </h2>
-                    <p class="text-sm text-slate-500 mt-1">Cadastre uma nova solicitação no sistema.</p>
-                </div>
-
-                <form method="post" class="space-y-4">
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <article class="bg-white border rounded p-4 space-y-3">
+                <h2 class="font-semibold">Novo processo</h2>
+                <form method="post" class="space-y-2">
                     <input type="hidden" name="acao" value="cadastrar_processo">
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Nome do Interessado</label>
-                            <input type="text" name="nome" placeholder="Nome completo" required 
-                                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:bg-white outline-none transition-all sm:text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">CPF</label>
-                            <input type="text" name="cpf" placeholder="Apenas números" required 
-                                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:bg-white outline-none transition-all sm:text-sm">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Assunto / Motivo</label>
-                        <input type="text" name="assunto" placeholder="Resumo da solicitação" required 
-                            class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:bg-white outline-none transition-all sm:text-sm">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Setor Inicial</label>
-                        <select name="setor_id" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:bg-white outline-none transition-all sm:text-sm">
-                            <option value="" disabled selected>Selecione para onde enviar...</option>
-                            <?php foreach ($setores as $setor): ?>
-                                <option value="<?= (int)$setor['id'] ?>"><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <button type="submit" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors shadow-sm focus:ring-4 focus:ring-blue-600/20 outline-none">
-                        Cadastrar Processo
-                    </button>
+                    <input class="w-full border rounded px-3 py-2" type="text" name="nome" placeholder="Nome do interessado" required>
+                    <input class="w-full border rounded px-3 py-2" type="text" name="cpf" placeholder="CPF" required>
+                    <input class="w-full border rounded px-3 py-2" type="text" name="assunto" placeholder="Assunto" required>
+                    <select class="w-full border rounded px-3 py-2" name="setor_id" required>
+                        <option value="">Setor inicial</option>
+                        <?php foreach ($setores as $setor): ?>
+                            <option value="<?= (int)$setor['id'] ?>"><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2" type="submit">Cadastrar</button>
                 </form>
-            </section>
+            </article>
 
-            <!-- Card Tramitar Processo -->
-            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 hover:shadow-md transition-shadow">
-                <div class="mb-6">
-                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                        </svg>
-                        Tramitar Processo
-                    </h2>
-                    <p class="text-sm text-slate-500 mt-1">Mova um processo para outro setor ou anexe um despacho.</p>
-                </div>
-
-                <form method="post" class="space-y-4">
+            <article class="bg-white border rounded p-4 space-y-3">
+                <h2 class="font-semibold">Tramitar processo</h2>
+                <form method="post" class="space-y-2">
                     <input type="hidden" name="acao" value="tramitar_processo">
-                    
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">ID do Processo</label>
-                            <input type="number" name="processo_id" placeholder="Ex: 15" min="1" required 
-                                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white outline-none transition-all sm:text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Setor Destino</label>
-                            <select name="destino_setor_id" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white outline-none transition-all sm:text-sm">
-                                <option value="" disabled selected>Mover para...</option>
-                                <?php foreach ($setores as $setor): ?>
-                                    <option value="<?= (int)$setor['id'] ?>"><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
+                    <input class="w-full border rounded px-3 py-2" type="number" name="processo_id" min="1" placeholder="ID do processo" required>
+                    <select class="w-full border rounded px-3 py-2" name="destino_setor_id" required>
+                        <option value="">Setor destino</option>
+                        <?php foreach ($setores as $setor): ?>
+                            <option value="<?= (int)$setor['id'] ?>"><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <textarea class="w-full border rounded px-3 py-2" rows="3" name="despacho" placeholder="Despacho" required></textarea>
+                    <button class="w-full bg-slate-800 hover:bg-slate-900 text-white rounded px-3 py-2" type="submit">Tramitar</button>
+                </form>
+            </article>
+        </section>
 
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Despacho / Parecer</label>
-                        <textarea name="despacho" rows="3" placeholder="Insira o texto do despacho aqui..." required 
-                            class="w-full px-4 py-2 bg-slate-50 border border-slate-300 text-slate-900 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white outline-none transition-all sm:text-sm resize-y"></textarea>
-                    </div>
+        <section class="bg-white border rounded p-4 space-y-3">
+            <h2 class="font-semibold">Pesquisa e filtros</h2>
+            <form method="get" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                <input class="border rounded px-3 py-2" type="text" name="protocolo" value="<?= htmlspecialchars($filtros['protocolo'], ENT_QUOTES, 'UTF-8') ?>" placeholder="Protocolo">
+                <input class="border rounded px-3 py-2" type="text" name="cpf" value="<?= htmlspecialchars($filtros['cpf'], ENT_QUOTES, 'UTF-8') ?>" placeholder="CPF">
+                <select class="border rounded px-3 py-2" name="status">
+                    <option value="">Status</option>
+                    <option value="aberto" <?= $filtros['status'] === 'aberto' ? 'selected' : '' ?>>aberto</option>
+                    <option value="em_tramitacao" <?= $filtros['status'] === 'em_tramitacao' ? 'selected' : '' ?>>em_tramitacao</option>
+                    <option value="finalizado" <?= $filtros['status'] === 'finalizado' ? 'selected' : '' ?>>finalizado</option>
+                </select>
+                <select class="border rounded px-3 py-2" name="setor_id">
+                    <option value="">Setor</option>
+                    <?php foreach ($setores as $setor): ?>
+                        <option value="<?= (int)$setor['id'] ?>" <?= (string)(int)$setor['id'] === $filtros['setor_id'] ? 'selected' : '' ?>><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input class="border rounded px-3 py-2" type="date" name="data_inicio" value="<?= htmlspecialchars($filtros['data_inicio'], ENT_QUOTES, 'UTF-8') ?>">
+                <input class="border rounded px-3 py-2" type="date" name="data_fim" value="<?= htmlspecialchars($filtros['data_fim'], ENT_QUOTES, 'UTF-8') ?>">
+                <button class="md:col-span-3 lg:col-span-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-2" type="submit">Aplicar filtros</button>
+            </form>
+        </section>
 
-                    <button type="submit" class="mt-4 w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors shadow-sm focus:ring-4 focus:ring-slate-800/20 outline-none">
-                        Realizar Tramitação
-                    </button>
+        <?php if ($processoEdicao !== null): ?>
+            <section class="bg-white border rounded p-4 space-y-3">
+                <h2 class="font-semibold">Edicao de processo #<?= (int)$processoEdicao['id'] ?></h2>
+                <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input type="hidden" name="acao" value="editar_processo">
+                    <input type="hidden" name="processo_id" value="<?= (int)$processoEdicao['id'] ?>">
+                    <input class="border rounded px-3 py-2" type="text" name="nome" value="<?= htmlspecialchars((string)$processoEdicao['interessado_nome'], ENT_QUOTES, 'UTF-8') ?>" required>
+                    <input class="border rounded px-3 py-2" type="text" name="cpf" value="<?= htmlspecialchars((string)$processoEdicao['interessado_cpf'], ENT_QUOTES, 'UTF-8') ?>" required>
+                    <input class="md:col-span-2 border rounded px-3 py-2" type="text" name="assunto" value="<?= htmlspecialchars((string)$processoEdicao['assunto'], ENT_QUOTES, 'UTF-8') ?>" required>
+                    <select class="border rounded px-3 py-2" name="setor_id" required>
+                        <?php foreach ($setores as $setor): ?>
+                            <option value="<?= (int)$setor['id'] ?>" <?= (int)$setor['id'] === (int)$processoEdicao['setor_atual_id'] ? 'selected' : '' ?>><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-2" type="submit">Salvar alteracoes</button>
                 </form>
             </section>
+        <?php endif; ?>
 
-        </div>
-
-        <!-- Tabela de Processos Ativos -->
-        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
-                <div>
-                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                        Acompanhamento de Processos
-                    </h2>
-                    <p class="text-sm text-slate-500 mt-1">Lista geral de todos os processos cadastrados no sistema.</p>
-                </div>
-            </div>
-
+        <section class="bg-white border rounded overflow-hidden">
+            <div class="p-4 border-b font-semibold">Processos ativos</div>
             <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-slate-600 whitespace-nowrap">
-                    <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-100">
                         <tr>
-                            <th scope="col" class="px-6 py-4 font-semibold">ID</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Protocolo</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Interessado</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">CPF</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Assunto</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Status</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Setor Atual</th>
-                            <th scope="col" class="px-6 py-4 font-semibold">Criado em</th>
+                            <th class="text-left p-2">ID</th>
+                            <th class="text-left p-2">Protocolo</th>
+                            <th class="text-left p-2">Interessado</th>
+                            <th class="text-left p-2">CPF</th>
+                            <th class="text-left p-2">Status</th>
+                            <th class="text-left p-2">Setor</th>
+                            <th class="text-left p-2">Acoes</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200">
-                        <?php if (count($processos) === 0): ?>
-                            <tr>
-                                <td colspan="8" class="px-6 py-8 text-center text-slate-500">
-                                    Nenhum processo encontrado no momento.
+                    <tbody>
+                        <?php if ($processos === []): ?>
+                            <tr><td class="p-3" colspan="7">Nenhum processo encontrado.</td></tr>
+                        <?php endif; ?>
+                        <?php foreach ($processos as $processo): ?>
+                            <tr class="border-t">
+                                <td class="p-2"><?= (int)$processo['id'] ?></td>
+                                <td class="p-2"><?= htmlspecialchars((string)$processo['numero_protocolo'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="p-2"><?= htmlspecialchars((string)$processo['interessado_nome'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="p-2"><?= htmlspecialchars((string)$processo['interessado_cpf'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="p-2"><?= htmlspecialchars((string)$processo['status'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="p-2"><?= htmlspecialchars((string)($processo['setor_nome'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="p-2">
+                                    <div class="flex flex-wrap gap-1">
+                                        <a class="text-xs bg-indigo-600 text-white px-2 py-1 rounded" href="?editar_id=<?= (int)$processo['id'] ?>">Editar</a>
+                                        <a class="text-xs bg-slate-600 text-white px-2 py-1 rounded" href="?historico_id=<?= (int)$processo['id'] ?>">Historico</a>
+                                        <form method="post" class="inline">
+                                            <input type="hidden" name="acao" value="finalizar_processo">
+                                            <input type="hidden" name="processo_id" value="<?= (int)$processo['id'] ?>">
+                                            <button class="text-xs bg-emerald-600 text-white px-2 py-1 rounded" type="submit">Finalizar</button>
+                                        </form>
+                                        <form method="post" class="inline" onsubmit="return confirm('Confirma exclusao logica do processo?');">
+                                            <input type="hidden" name="acao" value="excluir_processo">
+                                            <input type="hidden" name="processo_id" value="<?= (int)$processo['id'] ?>">
+                                            <button class="text-xs bg-red-600 text-white px-2 py-1 rounded" type="submit">Excluir logico</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($processos as $processo): ?>
-                                <tr class="hover:bg-slate-50 transition-colors">
-                                    <td class="px-6 py-4 font-medium text-slate-900">#<?= (int)$processo['id'] ?></td>
-                                    <td class="px-6 py-4 font-mono text-xs font-semibold bg-slate-100 rounded-md inline-block mt-3 mb-3 ml-2 border border-slate-200 text-slate-700">
-                                        <?= htmlspecialchars((string)$processo['numero_protocolo'], ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-slate-700 font-medium">
-                                        <?= htmlspecialchars((string)$processo['interessado_nome'], ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-slate-500">
-                                        <?= htmlspecialchars((string)$processo['interessado_cpf'], ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-slate-700 max-w-xs truncate" title="<?= htmlspecialchars((string)$processo['assunto'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <?= htmlspecialchars((string)$processo['assunto'], ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                                            <?= strtolower($processo['status']) === 'concluído' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200' ?>
-                                        ">
-                                            <?= htmlspecialchars((string)$processo['status'], ENT_QUOTES, 'UTF-8') ?>
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 font-medium text-slate-800">
-                                        <?= htmlspecialchars((string)($processo['setor_nome'] ?? 'Sem setor'), ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-slate-400 text-xs">
-                                        <?= htmlspecialchars((string)$processo['created_at'], ENT_QUOTES, 'UTF-8') ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
         </section>
-        
-        <!-- Footer simples -->
-        <p class="text-center text-xs text-slate-400 mt-10">
-            &copy; <?= date('Y') ?> Departamento de Tecnologia e Informação
-        </p>
-    </main>
 
+        <?php if ($historicoId > 0): ?>
+            <section class="bg-white border rounded p-4">
+                <h2 class="font-semibold mb-3">Historico de tramitacao do processo #<?= $historicoId ?></h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-100">
+                            <tr>
+                                <th class="text-left p-2">Data</th>
+                                <th class="text-left p-2">Origem</th>
+                                <th class="text-left p-2">Destino</th>
+                                <th class="text-left p-2">Despacho</th>
+                                <th class="text-left p-2">Usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($historico === []): ?>
+                                <tr><td class="p-2" colspan="5">Nenhum historico encontrado para este processo.</td></tr>
+                            <?php endif; ?>
+                            <?php foreach ($historico as $item): ?>
+                                <tr class="border-t">
+                                    <td class="p-2"><?= htmlspecialchars((string)$item['data_hora'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="p-2"><?= htmlspecialchars((string)($item['origem_nome'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="p-2"><?= htmlspecialchars((string)($item['destino_nome'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="p-2"><?= htmlspecialchars((string)$item['despacho'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="p-2"><?= (int)$item['user_id'] ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($isAdmin): ?>
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <article class="bg-white border rounded p-4 space-y-3">
+                    <h2 class="font-semibold">Gestao de usuarios</h2>
+                    <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input type="hidden" name="acao" value="criar_usuario">
+                        <input class="border rounded px-3 py-2" type="text" name="usuario_nome" placeholder="Nome" required>
+                        <input class="border rounded px-3 py-2" type="email" name="usuario_email" placeholder="E-mail" required>
+                        <input class="border rounded px-3 py-2" type="password" name="usuario_senha" placeholder="Senha minima 6" required>
+                        <select class="border rounded px-3 py-2" name="usuario_setor_id" required>
+                            <option value="">Setor</option>
+                            <?php foreach ($setores as $setor): ?>
+                                <option value="<?= (int)$setor['id'] ?>"><?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button class="md:col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-2" type="submit">Criar usuario</button>
+                    </form>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100">
+                                <tr>
+                                    <th class="text-left p-2">Nome</th>
+                                    <th class="text-left p-2">Email</th>
+                                    <th class="text-left p-2">Setor</th>
+                                    <th class="text-left p-2">Ativo</th>
+                                    <th class="text-left p-2">Acoes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($usuarios as $usuario): ?>
+                                    <tr class="border-t">
+                                        <td class="p-2"><?= htmlspecialchars((string)$usuario['nome'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="p-2"><?= htmlspecialchars((string)$usuario['email'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="p-2"><?= htmlspecialchars((string)($usuario['setor_nome'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="p-2"><?= (int)$usuario['ativo'] === 1 ? 'sim' : 'nao' ?></td>
+                                        <td class="p-2">
+                                            <form method="post" class="inline">
+                                                <input type="hidden" name="acao" value="inativar_usuario">
+                                                <input type="hidden" name="usuario_id" value="<?= (int)$usuario['id'] ?>">
+                                                <button class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded" type="submit">Inativar</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="bg-white border rounded p-4 space-y-3">
+                    <h2 class="font-semibold">Gestao de setores</h2>
+                    <form method="post" class="flex gap-2">
+                        <input type="hidden" name="acao" value="criar_setor">
+                        <input class="flex-1 border rounded px-3 py-2" type="text" name="setor_nome" placeholder="Nome do setor" required>
+                        <button class="bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2" type="submit">Adicionar</button>
+                    </form>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100">
+                                <tr>
+                                    <th class="text-left p-2">ID</th>
+                                    <th class="text-left p-2">Nome</th>
+                                    <th class="text-left p-2">Ativo</th>
+                                    <th class="text-left p-2">Salvar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($setoresGerencial as $setor): ?>
+                                    <tr class="border-t">
+                                        <form method="post">
+                                            <td class="p-2"><?= (int)$setor['id'] ?><input type="hidden" name="acao" value="atualizar_setor"><input type="hidden" name="setor_id" value="<?= (int)$setor['id'] ?>"></td>
+                                            <td class="p-2"><input class="border rounded px-2 py-1 w-full" type="text" name="setor_nome" value="<?= htmlspecialchars((string)$setor['nome'], ENT_QUOTES, 'UTF-8') ?>" required></td>
+                                            <td class="p-2">
+                                                <select class="border rounded px-2 py-1" name="setor_ativo">
+                                                    <option value="1" <?= (int)$setor['ativo'] === 1 ? 'selected' : '' ?>>sim</option>
+                                                    <option value="0" <?= (int)$setor['ativo'] === 0 ? 'selected' : '' ?>>nao</option>
+                                                </select>
+                                            </td>
+                                            <td class="p-2"><button class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded" type="submit">Salvar</button></td>
+                                        </form>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+        <?php endif; ?>
+    </main>
 </body>
 </html>

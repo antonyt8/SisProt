@@ -50,11 +50,22 @@ CREATE TABLE IF NOT EXISTS tramitacoes (
     CONSTRAINT fk_tramitacao_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS recuperacao_senhas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token VARCHAR(100) NOT NULL UNIQUE,
+    expira_em DATETIME NOT NULL,
+    usado TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_recuperacao_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE INDEX idx_processos_cpf ON processos(interessado_cpf);
 CREATE INDEX idx_processos_status ON processos(status);
 CREATE INDEX idx_processos_setor ON processos(setor_atual_id);
 CREATE INDEX idx_tramitacoes_processo ON tramitacoes(processo_id);
 CREATE INDEX idx_tramitacoes_data_hora ON tramitacoes(data_hora);
+CREATE INDEX idx_recuperacao_token ON recuperacao_senhas(token);
 
 INSERT INTO setores (nome) VALUES
 ('Protocolo Geral'),

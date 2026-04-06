@@ -17,4 +17,23 @@ class Setor
 
         return $stmt->fetchAll();
     }
+
+    public function listarGerencial(): array
+    {
+        $stmt = $this->db->query('SELECT id, nome, ativo, created_at FROM setores ORDER BY nome');
+
+        return $stmt->fetchAll();
+    }
+
+    public function criar(string $nome): void
+    {
+        $stmt = $this->db->prepare('INSERT INTO setores (nome, ativo) VALUES (?, 1)');
+        $stmt->execute([$nome]);
+    }
+
+    public function atualizar(int $id, string $nome, bool $ativo): void
+    {
+        $stmt = $this->db->prepare('UPDATE setores SET nome = ?, ativo = ? WHERE id = ?');
+        $stmt->execute([$nome, $ativo ? 1 : 0, $id]);
+    }
 }

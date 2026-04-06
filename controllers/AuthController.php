@@ -5,10 +5,12 @@ declare(strict_types=1);
 class AuthController
 {
     private PDO $db;
+    private Usuario $usuarioModel;
 
     public function __construct()
     {
         $this->db = Database::connect();
+        $this->usuarioModel = new Usuario();
     }
 
     public function login(string $email, string $senha): bool
@@ -51,5 +53,50 @@ class AuthController
         session_destroy();
 
         registrarLog('logout', ['user_id' => $userId]);
+    }
+
+    public function solicitarRecuperacaoSenha(string $email): array
+    {
+        $email = trim($email);
+
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['ok' => false, 'mensagem' => 'Informe um e-mail valido.'];
+        }
+
+        $token = $this->usuarioModel->solicitarRecuperacao($email);
+
+        if ($token === null) {
+            return ['ok' => false, 'mensagem' => 'Nao foi possivel localizar usuario ativo com este e-mail.'];
+        }
+
+        registrarLog('recuperacao_solicitada', ['email' => $email]);
+
+        return [
+            'ok' => true,
+            'mensagem' => 'Solicitacao registrada. Utilize o token gerado para redefinir a senha.',
+            'token' => $token,
+        ];
+    }
+
+    public function redefinirSenhaComToken(string $token, string $novaSenha): array
+    {
+        $resultado = ['ok' => false, 'mensagem' => 'Token invalido.'];
+
+        if (strlen($token) >= 20) {
+            if (strlen($novaSenha) < 6) {
+                $resultado = ['ok' => false, 'mensagem' => 'A nova senha deve ter ao menos 6 caracteres.'];
+            } else {
+                $ok = $this->usuarioModel->redefinirSenhaPorToken($token, $novaSenha);
+
+                if ($ok) {
+                    registrarLog('senha_redefinida', ['token_prefixo' => substr($token, 0, 8)]);
+                    $resultado = ['ok' => true, 'mensagem' => 'Senha redefinida com sucesso.'];
+                } else {
+                    $resultado = ['ok' => false, 'mensagem' => 'Token expirado ou ja utilizado.'];
+                }
+            }
+        }
+
+        return $resultado;
     }
 }

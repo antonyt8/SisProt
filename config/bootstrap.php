@@ -15,6 +15,7 @@ require_once dirname(__DIR__) . '/models/ProtocoloGenerationException.php';
 require_once dirname(__DIR__) . '/models/Processo.php';
 require_once dirname(__DIR__) . '/models/Tramitacao.php';
 require_once dirname(__DIR__) . '/models/Setor.php';
+require_once dirname(__DIR__) . '/models/Usuario.php';
 require_once dirname(__DIR__) . '/controllers/AuthController.php';
 require_once dirname(__DIR__) . '/controllers/ProcessoController.php';
 require_once dirname(__DIR__) . '/services/ProcessoService.php';
